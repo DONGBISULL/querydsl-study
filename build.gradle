@@ -40,6 +40,10 @@ dependencies {
 	testImplementation('org.springframework.boot:spring-boot-starter-test') {
 		exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
 	}
+	/* MapStruct */
+	implementation 'org.mapstruct:mapstruct:1.5.5.Final'
+	/* MapStruct */
+	annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'
 }
 
 tasks.named('test') {
