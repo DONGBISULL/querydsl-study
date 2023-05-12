@@ -19,6 +19,10 @@ public class Member {
 
     private int age;
 
+    private String grade;
+
+    private String mName;
+
     // 연관관계 주인!
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "team_id") //외래키 이름 빠트린 부분이므로 꼭 내용 확인

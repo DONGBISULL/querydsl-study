@@ -2,6 +2,9 @@ package study.querydsl;
 
 import com.querydsl.core.QueryResults;
 import com.querydsl.core.Tuple;
+import com.querydsl.core.types.Expression;
+import com.querydsl.core.types.dsl.CaseBuilder;
+import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import org.assertj.core.api.Assertions;
@@ -41,10 +44,10 @@ public class QuerydslBasicTest {
         Team teamB = new Team("TeamB");
 
         Member member1 = new Member("member1", 10, teamA);
-        Member member2 = new Member("member2", 10, teamA);
+        Member member2 = new Member("member2", 20, teamA);
 
-        Member member3 = new Member("member3", 10, teamB);
-        Member member4 = new Member("member4", 10, teamB);
+        Member member3 = new Member("member3", 30, teamB);
+        Member member4 = new Member("member4", 40, teamB);
 
         em.persist(member1);
         em.persist(member2);
@@ -300,22 +303,21 @@ public class QuerydslBasicTest {
     }
 
     /**
-    * fetch join 과 달리 연관 entity에  join을 걸어도 실제 쿼리에서 조회하는 엔티티는
+     * fetch join 과 달리 연관 entity에  join을 걸어도 실제 쿼리에서 조회하는 엔티티는
      * JPQL에서 조회하는 주체가 되는 Entity만 조회하여 영속화
-     *
+     * <p>
      * fetch join
      * 조회의 주체가 되는 Entity 이외에 fetch join 이 걸린 연관 entity도 함께 select 하여 모두 영속화
      * => 즉시 로딩
-     *
+     * <p>
      * 1) fetch join에서는 별칭 사용 X
      * => 최대한 지양해라!!
-     *
+     * <p>
      * 2) 둘 이상의 컬렉션 페치 조인 X
      * => 데이터 정합성이 맞지 않는 경우 생김
-     *
+     * <p>
      * 3) 컬렉션을 페치 조인하면 페이징 API 사용X
-     *
-    * */
+     */
     @Test
     public void fetchJoinUse() throws Exception {
         em.flush();
@@ -323,7 +325,7 @@ public class QuerydslBasicTest {
 
         Member findMember = queryFactory
                 .selectFrom(member)
-                .join(member.team , team).fetchJoin()
+                .join(member.team, team).fetchJoin()
                 .where(member.username.eq("member1"))
                 .fetchOne();
 
@@ -332,15 +334,17 @@ public class QuerydslBasicTest {
     }
 
     /**
+     * ExpressionUtils.as() as를 통해 서브쿼리의 결과물을 alias 로 !!
+     * Where 절에서 서브 쿼리를 사용할 때 ExpressionUtils 를 사용하여 구성한다!!
+     * */
+
+    /**
      * 나이가 가장 많은 회원 조회
      */
     @Test
-        public void subQuery_text () throws Exception {
+    public void subQuery_test() throws Exception {
 
-        Member member10 = new Member("member10", 40);
-        em.persist(member10);
-
-        QMember memberSub = new QMember("memberSub");
+        QMember memberSub = new QMember("memberSub"); // 알리아스 중복을 없애기 위해!!!
 
         List<Member> result = queryFactory
                 .selectFrom(member)
@@ -354,16 +358,153 @@ public class QuerydslBasicTest {
     }
 
     /**
+     * 나이가 평균 이상인 회원
+     */
+    @Test
+    public void subQuery_age_avg_goe_test() throws Exception {
+
+        QMember memberSub = new QMember("memberSub"); // 알리아스 중복을 없애기 위해!!!
+
+        List<Member> result = queryFactory
+                .selectFrom(member)
+                .where(member.age.goe(
+                        JPAExpressions
+                                .select(memberSub.age.max())
+                                .from(memberSub)
+                )).fetch();
+
+        assertThat(result).extracting("age").containsExactly(30, 40);
+
+    }
+
+    /**
+     * 서브쿼리 여러 건 처리, in 사용
+     */
+    @Test
+    public void subQueryIn() throws Exception {
+
+        QMember memberSub = new QMember("memberSub"); // 알리아스 중복을 없애기 위해!!!
+
+        List<Member> result = queryFactory
+                .selectFrom(member)
+                .where(member.age.in(
+                        JPAExpressions
+                                .select(memberSub.age)
+                                .from(memberSub)
+                                .where(memberSub.age.gt(10))
+                ))
+                .fetch();
+
+        assertThat(result).extracting("age").containsExactly(20, 30, 40);
+
+    }
+
+    /**
+     * 이름과 함께 서브쿼리 사용하기
+     */
+    @Test
+    public void selectSubquery() {
+
+        QMember memberSub = new QMember("memberSub");
+
+        List<Tuple> result = queryFactory
+                .select(member.username,
+                        JPAExpressions
+                                .select(member.age.avg())
+                                .from(memberSub)
+                )
+                .from(member)
+                .fetch();
+
+        for (Tuple tuple : result) {
+            System.out.println("tuple " + tuple);
+        }
+        /**
+         * JPA 서브쿼리 한계 => from 절의 서브쿼리 지원X
+         * => 인라인뷰 지원 안한다!!
+         * 1) 서브쿼리 join으로 변경
+         * 2) 애플리케이션 쿼리 2번 분리하여 실행
+         * 3) nativeSQL 사용
+         *
+         *  from 절에 서브쿼리 쓰는 이유
+         * -> 실제 기능의 필요 보다 쿼리에서 다 형식을 맞추려고 쿼리를 짜는 것이므로 쿼리는 단순하게 짜고
+         *  날짜 형식 같은 것들은 뷰에서 만들어서 보여주는 것이 좋다 !!!
+         *
+         *  책 > SQL AntiPatterns Good!!!!
+         *  => 정말 복잡한 몇 천줄의 쿼리는 쪼개서 여러번에 걸쳐 조회하는 것이 더 나을 수 있다.
+         *
+         * */
+    }
+
+    /**
+     * case 문 구현
+     */
+    @Test
+    public void basicCase() throws Exception {
+        List<String> result = queryFactory
+                .select(member.age
+                        .when(10).then("열살")
+                        .when(20).then("스무살")
+                        .otherwise("기타"))
+                .from(member)
+                .fetch();
+
+        for (String s : result) {
+            System.out.println("s = " + s);
+        }
+    }
+
+    /**
+     * 복잡한 case문의 경우 CaseBuilder 사용
+     * => db에선 최소한의 grouping과 filtering 통해 raw 데이터를 조회
+     * 실제 case 별 상황 화면에 보여주기 등은 애플리케이션에서 로직을 수행하는 것이 좋다!!
+     */
+    @Test
+    public void complexCase() throws Exception {
+        List<String> result = queryFactory
+                .select(new CaseBuilder()
+                        .when(member.age.between(0, 20)).then("0~20살")
+                        .when(member.age.between(21, 30)).then("21~30살")
+                        .otherwise("기타"))
+                .from(member)
+                .fetch();
+        for (String s : result) {
+            System.out.println(" s = " + s);
+        }
+    }
+
+    /**
      *
      */
     @Test
-        public void subQuery_age_avg_goe_test () throws Exception {
-             // given
-
-             // when
-
-             // then
-
+    public void constant() throws Exception {
+        List<Tuple> result = queryFactory
+                .select(member.username, Expressions.constant("A"))
+                .from(member)
+                .fetch();
+        for (Tuple tuple : result) {
+            System.out.println("tuple = " + tuple);
         }
+
+    }
+
+    /**
+     * concat 사용할 때 타입을 맞춰줘야 한다
+     * => stringValue 로 age 의 타입 맞춰줌
+     *  주로 enum 처리 할 때 stringValue 로 맞춰서 concat 사용해라 !!
+     *
+     */
+    @Test
+    public void concat() throws Exception {
+        List<String> result = queryFactory
+                .select(member.username.concat(("_")).concat(member.age.stringValue()))
+                .from(member)
+                .where(member.username.eq("member1"))
+                .fetch();
+
+        for (String s : result) {
+            System.out.println("s = " + s);
+        }
+    }
 
 }

@@ -3,7 +3,6 @@ package study.querydsl.dto;
 import lombok.*;
 import study.querydsl.entity.Member;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @Getter
@@ -11,7 +10,7 @@ import java.util.List;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class TeamDTO {
+public class TeamDto {
     private Long id;
     private String name;
     private List<Member> member;

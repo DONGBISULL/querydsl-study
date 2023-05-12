@@ -44,6 +44,9 @@ dependencies {
 	implementation 'org.mapstruct:mapstruct:1.5.5.Final'
 	/* MapStruct */
 	annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'
+	/* lang 3 유틸 */
+	implementation group: 'org.apache.commons', name: 'commons-lang3', version: '3.0'
+
 }
 
 tasks.named('test') {
